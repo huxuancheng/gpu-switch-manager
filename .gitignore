@@ -38,3 +38,7 @@ backups/
 .venv/
 venv/
 ENV/
+
+# Sudo diagnostic and fix scripts (local use only)
+sudo-diagnosis.sh
+sudo-timeout-fix.sh
