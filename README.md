@@ -112,7 +112,52 @@ lspci -nn | grep -i nvidia
 - `/boot/grub/grub.cfg`
 - initramfs 镜像
 
-## ⚠️ 注意事项
+## 📊 兼容性
+
+### ✅ 完全支持
+
+| 类别 | 支持项 |
+|------|--------|
+| **操作系统** | Arch Linux, Manjaro, EndeavourOS 等 Arch 系发行版 |
+| **CPU 架构** | AMD64 (x86_64) |
+| **GPU 品牌** | NVIDIA (主要支持) |
+| **桌面环境** | GNOME, KDE Plasma, XFCE, MATE, LXQt 及其他 GTK3 环境 |
+| **CPU 类型** | Intel (支持 Intel IOMMU), AMD (支持 AMD IOMMU) |
+
+### ⚠️ 部分支持
+
+| 发行版 | initramfs 工具 | 适配需求 |
+|--------|---------------|----------|
+| Ubuntu/Debian | `update-initramfs` | 需修改脚本第 213、285 行 |
+| Fedora/RHEL | `dracut` | 需修改脚本第 213、285 行 |
+| openSUSE | `dracut` | 需修改脚本第 213、285 行 |
+
+### ❌ 不支持
+
+- Windows / macOS
+- 无 systemd 的发行版
+- 非虚拟化支持的环境
+
+### 🔧 其他发行版适配
+
+如果需要在 Ubuntu/Debian 使用，将 `gpu-switch-v3` 中的命令修改为：
+
+```bash
+# 第 213 行和第 285 行
+# 将:
+mkinitcpio -P
+
+# 改为:
+update-initramfs -u -k all
+```
+
+如果需要在 Fedora/RHEL 使用，改为：
+
+```bash
+dracut -f
+```
+
+### ⚠️ 注意事项
 
 1. **重启要求**: 模式切换后必须重启系统才能生效
 2. **备份重要**: 所有配置修改前会自动备份
