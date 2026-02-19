@@ -94,11 +94,12 @@ class GPUSwitcher(Gtk.Window):
         if HAS_INDICATOR:
             self.create_indicator()
 
-        # 设置快捷键
-        self.setup_shortcuts()
-
         # 初始化UI
         self.setup_ui()
+        
+        # 设置快捷键（UI创建后）
+        self.setup_shortcuts()
+        
         self.update_status()
         self.update_gpu_info()
 
@@ -254,15 +255,12 @@ class GPUSwitcher(Gtk.Window):
 
     def setup_shortcuts(self):
         """设置快捷键"""
-        # 切换到正常模式: Ctrl+Alt+1
-        # 切换到直通模式: Ctrl+Alt+2
         # 刷新状态: F5
-        accel_group = Gtk.AccelGroup()
-        self.add_accel_group(accel_group)
-        
-        # F5 刷新
-        refresh_key, refresh_mod = Gtk.accelerator_parse("F5")
-        self.refresh_btn.add_accelerator("clicked", accel_group, refresh_key, refresh_mod, Gtk.AccelFlags.VISIBLE)
+        if hasattr(self, 'refresh_btn'):
+            accel_group = Gtk.AccelGroup()
+            self.add_accel_group(accel_group)
+            refresh_key, refresh_mod = Gtk.accelerator_parse("F5")
+            self.refresh_btn.add_accelerator("clicked", accel_group, refresh_key, refresh_mod, Gtk.AccelFlags.VISIBLE)
 
     def setup_ui(self):
         """设置UI"""
@@ -337,10 +335,14 @@ class GPUSwitcher(Gtk.Window):
         status_box.pack_start(self.refresh_btn, False, False, int(5 * SCALE_FACTOR))
         
         # 日志区域
+        log_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=int(5 * SCALE_FACTOR))
+        log_box.set_vexpand(True)
+        left_panel.pack_start(log_box, True, True, 0)
+        
         log_frame = Gtk.Frame(label="操作日志")
         log_frame.get_style_context().add_class("log-card")
         log_frame.set_vexpand(True)
-        left_panel.pack_start(log_frame, True, True, 0)
+        log_box.pack_start(log_frame, True, True, 0)
         
         scrolled = Gtk.ScrolledWindow()
         scrolled.set_vexpand(True)
@@ -355,7 +357,7 @@ class GPUSwitcher(Gtk.Window):
         
         # 日志操作按钮
         log_btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=int(5 * SCALE_FACTOR))
-        log_frame.pack_start(log_btn_box, False, False, int(5 * SCALE_FACTOR))
+        log_box.pack_start(log_btn_box, False, False, 0)
         
         export_btn = Gtk.Button.new_with_label("📥 导出日志")
         export_btn.connect("clicked", self.on_export_log)
