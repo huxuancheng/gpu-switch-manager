@@ -151,6 +151,34 @@ class GPUSwitcher(Gtk.Window):
         separator3 = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
         vbox.pack_start(separator3, False, False, 10)
 
+        # GPU 清理按钮区域
+        cleanup_frame = Gtk.Frame(label="GPU 清理")
+        cleanup_frame.get_style_context().add_class("cleanup-card")
+        vbox.pack_start(cleanup_frame, False, False, 0)
+
+        cleanup_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        cleanup_box.set_margin_top(10)
+        cleanup_box.set_margin_bottom(10)
+        cleanup_box.set_margin_start(20)
+        cleanup_box.set_margin_end(20)
+        cleanup_frame.add(cleanup_box)
+
+        # 快速清理按钮
+        quick_cleanup_btn = Gtk.Button.new_with_label("🧹 快速清理 GPU")
+        quick_cleanup_btn.get_style_context().add_class("cleanup-button-quick")
+        quick_cleanup_btn.connect("clicked", self.on_quick_cleanup)
+        cleanup_box.pack_start(quick_cleanup_btn, True, True, 0)
+
+        # 完整清理按钮
+        full_cleanup_btn = Gtk.Button.new_with_label("⚡ 完整清理")
+        full_cleanup_btn.get_style_context().add_class("cleanup-button-full")
+        full_cleanup_btn.connect("clicked", self.on_full_cleanup)
+        cleanup_box.pack_start(full_cleanup_btn, True, True, 0)
+
+        # 分隔线
+        separator4 = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+        vbox.pack_start(separator4, False, False, 10)
+
         # 操作按钮
         actions_frame = Gtk.Frame(label="切换模式")
         actions_frame.get_style_context().add_class("actions-card")
@@ -249,10 +277,90 @@ class GPUSwitcher(Gtk.Window):
         """在后台线程中运行 GPU 检测"""
         try:
             success, output, error = self.run_command(str(script_path))
-
             GLib.idle_add(lambda: self._process_gpu_check_result(success, output, error))
         except Exception as e:
             GLib.idle_add(lambda: self.log(f"GPU 检测出错: {e}"))
+
+    def on_quick_cleanup(self, button):
+        """快速清理按钮 - 关闭计算进程和浏览器"""
+        self.confirm_and_cleanup("quick")
+
+    def on_full_cleanup(self, button):
+        """完整清理按钮 - 关闭所有进程包括显示服务"""
+        self.confirm_and_cleanup("full")
+
+    def confirm_and_cleanup(self, cleanup_type):
+        """确认并执行清理"""
+        if cleanup_type == "quick":
+            msg = "快速清理 GPU 占用\n\n这将:\n• 关闭计算/CUDA 进程\n• 关闭浏览器进程\n\n是否继续?"
+        else:
+            msg = "完整清理 GPU\n\n这将:\n• 关闭所有计算进程\n• 关闭浏览器进程\n• 停止显示服务\n⚠️ 警告: 停止显示服务会退出图形界面！\n\n是否继续?"
+
+        dialog = Gtk.MessageDialog(
+            transient_for=self,
+            flags=0,
+            message_type=Gtk.MessageType.WARNING if cleanup_type == "full" else Gtk.MessageType.QUESTION,
+            buttons=Gtk.ButtonsType.YES_NO,
+            text="清理 GPU 占用"
+        )
+        dialog.format_secondary_text(msg)
+        response = dialog.run()
+        dialog.destroy()
+
+        if response == Gtk.ResponseType.YES:
+            self.run_cleanup(cleanup_type)
+
+    def run_cleanup(self, cleanup_type):
+        """执行清理操作"""
+        cleanup_script = self.script_dir / "kill-gpu-processes.sh"
+
+        if not cleanup_script.exists():
+            self.log("✗ 清理脚本不存在")
+            return
+
+        if self.operation_in_progress:
+            self.log("⚠️ 操作进行中，请稍候")
+            return
+
+        self.operation_in_progress = True
+
+        if cleanup_type == "quick":
+            self.log("🧹 开始快速清理...")
+            # 直接调用清理命令
+            cmd = f"pkexec {cleanup_script} cleanup-quick"
+        else:
+            self.log("⚡ 开始完整清理...")
+            cmd = f"pkexec {cleanup_script} cleanup-full"
+
+        # 在后台线程中运行清理
+        thread = threading.Thread(target=self._run_cleanup_thread, args=(cmd,))
+        thread.daemon = True
+        thread.start()
+
+    def _run_cleanup_thread(self, cmd):
+        """在后台线程中运行清理"""
+        try:
+            success, output, error = self.run_command(cmd)
+
+            if success:
+                GLib.idle_add(lambda: self._process_cleanup_result(output))
+            else:
+                GLib.idle_add(lambda: self.log(f"✗ 清理失败: {error}"))
+
+            GLib.idle_add(lambda: setattr(self, 'operation_in_progress', False))
+        except Exception as e:
+            GLib.idle_add(lambda: self.log(f"✗ 清理出错: {e}"))
+            GLib.idle_add(lambda: setattr(self, 'operation_in_progress', False))
+
+    def _process_cleanup_result(self, output):
+        """处理清理结果"""
+        self.log("=== 清理结果 ===")
+        for line in output.split('\n'):
+            if line.strip():
+                self.log(line.strip())
+
+        self.log("✓ 清理完成，请刷新状态")
+        self.update_status()
 
     def _process_gpu_check_result(self, success, output, error):
         """处理 GPU 检测结果"""
@@ -406,6 +514,42 @@ class GPUSwitcher(Gtk.Window):
         .toggle-button-reboot:not(:checked):hover,
         .toggle-button-hotplug:not(:checked):hover {
             background-color: rgba(0,0,0,0.05);
+        }
+
+        /* GPU 清理卡片 */
+        .cleanup-card {
+            border-radius: 8px;
+            border: 1px solid rgba(0,0,0,0.1);
+        }
+
+        .cleanup-button-quick {
+            border-radius: 6px;
+            padding: 10px 20px;
+            font-size: 13px;
+            font-weight: bold;
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white;
+            border: none;
+        }
+
+        .cleanup-button-quick:hover {
+            background: linear-gradient(135deg, #66BB6A 0%, #43a047 100%);
+            box-shadow: 0 2px 8px rgba(76, 175, 80, 0.4);
+        }
+
+        .cleanup-button-full {
+            border-radius: 6px;
+            padding: 10px 20px;
+            font-size: 13px;
+            font-weight: bold;
+            background: linear-gradient(135deg, #FF5722 0%, #F4511E 100%);
+            color: white;
+            border: none;
+        }
+
+        .cleanup-button-full:hover {
+            background: linear-gradient(135deg, #FF7043 0%, #E64A19 100%);
+            box-shadow: 0 2px 8px rgba(255, 87, 34, 0.4);
         }
 
         /* 非激活状态按钮 */
