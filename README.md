@@ -1,6 +1,6 @@
 # GPU 直通管理器 (GPU Switch Manager)
 
-一个基于 GTK3 的 GPU 直通模式切换工具,支持在正常模式和 VFIO 直通模式之间切换,专为 NVIDIA GPU 设计。
+一个简洁高效的 GPU 直通模式切换工具,支持在正常模式和 VFIO 直通模式之间切换,专为 NVIDIA GPU 设计。
 
 ![GPU Switch Manager](https://img.shields.io/badge/Python-3-blue.svg)
 ![GTK](https://img.shields.io/badge/GTK-3.0-green.svg)
@@ -8,24 +8,18 @@
 
 ## ✨ 功能特性
 
-### 🎨 现代化界面
-- 基于 Adwaita 主题的美观界面
-- 渐变色按钮和平滑的动画效果
-- 圆角卡片设计和阴影效果
-- 响应式布局,支持窗口缩放
+### 🎨 简洁界面
+- 基于 GTK3 的清爽界面
+- 渐变色按钮和现代化设计
+- 响应式布局,自动适配系统 DPI
+- 支持系统托盘最小化
 
 ### 🔧 核心功能
 - **模式切换**: 一键切换正常模式和直通模式
-- **状态监控**: 实时显示 GPU 驱动、IOMMU、配置文件状态
-- **自动备份**: 配置文件自动备份到 `/etc/gpu-switch-backup/`
+- **状态监控**: 实时显示 GPU 驱动、IOMMU 状态
 - **日志记录**: 详细的操作日志,便于问题排查
-- **权限管理**: 使用 pkexec 安全执行需要 root 权限的操作
-
-### 🛡️ 安全性
-- 操作前确认对话框,防止误操作
-- 线程安全的日志记录
-- 配置文件自动备份机制
-- 完善的错误处理
+- **日志导出**: 支持导出日志文件
+- **系统托盘**: 可最小化到托盘,方便后台运行
 
 ## 📦 安装
 
@@ -39,12 +33,12 @@
 
 ### Arch Linux
 ```bash
-sudo pacman -S python-gobject polkit
+sudo pacman -S python-gobject polkit python-appindicator
 ```
 
 ### Ubuntu/Debian
 ```bash
-sudo apt-get install python3-gi policykit-1
+sudo apt-get install python3-gi policykit-1 gir1.2-appindicator3-0.1
 ```
 
 ## 🚀 使用方法
@@ -68,7 +62,6 @@ sudo ./gpu-switch-v3 passthrough   # 切换到直通模式
 ├── gpu-switch-gui.py          # GUI 主程序 (PyGTK3)
 ├── gpu-switch-v3              # Shell 脚本 (核心切换逻辑)
 ├── gpu-switch                 # 旧版脚本 (兼容性保留)
-├── gpu-switch-hotplug         # 热插拔脚本
 ├── gpu-switch-gui.desktop     # 桌面快捷方式
 └── README.md                  # 项目文档
 ```
