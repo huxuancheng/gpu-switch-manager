@@ -88,6 +88,9 @@ class GPUSwitcher(Gtk.Window):
         # 加载配置
         self.load_config()
         self.load_history()
+        
+        # 自动识别虚拟机（如果配置为空）
+        self.auto_detect_vms()
 
         # 创建系统托盘
         self.indicator = None
@@ -165,6 +168,40 @@ class GPUSwitcher(Gtk.Window):
             self.history = self.history[-100:]
         self.save_history()
         self.update_history_display()
+
+    def auto_detect_vms(self):
+        """自动识别虚拟机"""
+        # 如果已有配置，跳过
+        if self.config.get('vm_command', '').strip() or self.config.get('vm_name', '').strip():
+            return
+        
+        # 尝试从 virsh 识别虚拟机
+        self.detected_vms = self._get_libvirt_vms()
+        self.config['detected_vms'] = self.detected_vms
+        
+        # 如果只有一个虚拟机，自动设置
+        if len(self.detected_vms) == 1:
+            vm_name = self.detected_vms[0]
+            self.config['vm_name'] = vm_name
+            self.config['vm_command'] = f"virsh start {vm_name}"
+            self.config['vm_close_command'] = f"virsh shutdown {vm_name}"
+            self.log(f"✓ 自动识别虚拟机: {vm_name}")
+            self.save_config()
+
+    def _get_libvirt_vms(self):
+        """获取 libvirt 虚拟机列表"""
+        vms = []
+        # 检查 virsh 是否可用
+        success, output, _ = self.run_command("which virsh", timeout=2)
+        if not success:
+            return vms
+        
+        # 获取虚拟机列表
+        success, output, _ = self.run_command("virsh list --name --all", timeout=5)
+        if success and output.strip():
+            vms = [vm.strip() for vm in output.strip().split('\n') if vm.strip()]
+        
+        return vms
 
     def create_indicator(self):
         """创建系统托盘图标"""
@@ -581,6 +618,42 @@ class GPUSwitcher(Gtk.Window):
         vm_box.set_margin_bottom(int(10 * SCALE_FACTOR))
         vm_frame.add(vm_box)
         
+        # 虚拟机选择
+        if self.detected_vms:
+            vm_select_label = Gtk.Label(label="选择虚拟机:")
+            vm_select_label.set_halign(Gtk.Align.START)
+            vm_box.pack_start(vm_select_label, False, False, 0)
+            
+            vm_list = Gtk.ListStore(str)
+            for vm in self.detected_vms:
+                vm_list.append([vm])
+            
+            self.vm_combo = Gtk.ComboBox.new_with_model(vm_list)
+            renderer = Gtk.CellRendererText()
+            self.vm_combo.pack_start(renderer, True)
+            self.vm_combo.add_attribute(renderer, "text", 0)
+            
+            # 设置当前选中的虚拟机
+            current_vm = self.config.get('vm_name', '')
+            if current_vm in self.detected_vms:
+                index = self.detected_vms.index(current_vm)
+                self.vm_combo.set_active(index)
+            
+            self.vm_combo.connect("changed", self.on_vm_selected)
+            vm_box.pack_start(self.vm_combo, True, True, 0)
+            
+            # 刷新虚拟机列表按钮
+            refresh_vm_btn = Gtk.Button.new_with_label("🔄 刷新虚拟机列表")
+            refresh_vm_btn.connect("clicked", self.on_refresh_vms)
+            vm_box.pack_start(refresh_vm_btn, False, False, 0)
+            
+            vm_box.pack_start(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL), False, False, int(5 * SCALE_FACTOR))
+        
+        # 自定义命令
+        custom_label = Gtk.Label(label="自定义命令 (如果使用非 virsh 方式):")
+        custom_label.set_halign(Gtk.Align.START)
+        vm_box.pack_start(custom_label, False, False, 0)
+        
         # VM 启动命令
         cmd_label = Gtk.Label(label="VM 启动命令:")
         cmd_label.set_halign(Gtk.Align.START)
@@ -630,6 +703,27 @@ class GPUSwitcher(Gtk.Window):
         save_btn.get_style_context().add_class("mode-button-normal")
         save_btn.connect("clicked", self.on_save_settings)
         settings_box.pack_start(save_btn, False, False, 0)
+
+    def on_vm_selected(self, combo):
+        """虚拟机选择改变"""
+        tree_iter = combo.get_active_iter()
+        if tree_iter:
+            model = combo.get_model()
+            vm_name = model[tree_iter][0]
+            self.config['vm_name'] = vm_name
+            self.vm_cmd_entry.set_text(f"virsh start {vm_name}")
+            self.vm_close_entry.set_text(f"virsh shutdown {vm_name}")
+
+    def on_refresh_vms(self, button):
+        """刷新虚拟机列表"""
+        self.log("刷新虚拟机列表...")
+        self.detected_vms = self._get_libvirt_vms()
+        self.log(f"检测到 {len(self.detected_vms)} 个虚拟机")
+        for vm in self.detected_vms:
+            self.log(f"  - {vm}")
+        self.config['detected_vms'] = self.detected_vms
+        self.save_config()
+        self.log("✓ 虚拟机列表已更新，请重启程序生效")
 
     def apply_css(self):
         """应用CSS样式"""
