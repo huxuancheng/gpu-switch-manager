@@ -15,6 +15,21 @@ GPU_BUS="0000:02:00.0"
 AUDIO_BUS="0000:02:00.1"
 BACKUP_DIR="/tmp/gpu-hotplug-backup"
 
+# 自动模式（非交互式），用于 GUI 调用
+AUTO_MODE=false
+
+# 解析参数
+for arg in "$@"; do
+    case $arg in
+        --auto)
+            AUTO_MODE=true
+            shift
+            ;;
+        *)
+            ;;
+    esac
+done
+
 # 创建备份目录
 mkdir -p "$BACKUP_DIR"
 
@@ -158,13 +173,18 @@ enable_passthrough() {
 
     # 检查 GPU 占用
     if ! check_gpu_usage; then
-        log_warning "检测到 GPU 占用，是否强制停止? (yes/no)"
-        read -p "> " answer
-        if [ "$answer" = "yes" ]; then
+        if [ "$AUTO_MODE" = true ]; then
+            log_warning "检测到 GPU 占用，自动模式将强制停止进程..."
             force_stop_gpu
         else
-            log_error "已取消切换"
-            return 1
+            log_warning "检测到 GPU 占用，是否强制停止? (yes/no)"
+            read -p "> " answer
+            if [ "$answer" = "yes" ]; then
+                force_stop_gpu
+            else
+                log_error "已取消切换"
+                return 1
+            fi
         fi
     fi
 
@@ -274,7 +294,7 @@ case "${1:-help}" in
     help|--help|-h)
         echo -e "${GREEN}GPU 安全热切换脚本${NC}"
         echo ""
-        echo "用法: $0 [命令]"
+        echo "用法: $0 [命令] [选项]"
         echo ""
         echo "命令:"
         echo "  status       显示当前驱动状态"
@@ -283,6 +303,14 @@ case "${1:-help}" in
         echo "  check        运行安全检查"
         echo "  logs         查看操作日志"
         echo "  help         显示帮助信息"
+        echo ""
+        echo "选项:"
+        echo "  --auto       自动模式，跳过交互式确认（用于 GUI）"
+        echo ""
+        echo "示例:"
+        echo "  $0 passthrough       # 交互式切换到直通"
+        echo "  $0 passthrough --auto # 自动切换到直通"
+        echo "  $0 check            # 运行安全检查"
         echo ""
         ;;
     *)

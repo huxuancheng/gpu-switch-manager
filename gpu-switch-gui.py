@@ -658,7 +658,7 @@ class GPUSwitcher(Gtk.Window):
 
         if hotplug_script.exists():
             script_path = str(hotplug_script)
-            self.log(f"使用安全热切换脚本")
+            self.log(f"使用安全热切换脚本 (自动模式)")
         elif fallback_script.exists():
             script_path = str(fallback_script)
             self.log(f"使用标准热切换脚本")
@@ -672,11 +672,11 @@ class GPUSwitcher(Gtk.Window):
 
         try:
             if mode == "normal":
-                cmd = f"pkexec {script_path} normal"
+                cmd = f"pkexec {script_path} normal --auto"
             else:
-                cmd = f"pkexec {script_path} passthrough"
+                cmd = f"pkexec {script_path} passthrough --auto"
 
-            self.log(f"执行命令: {script_path} {mode}")
+            self.log(f"执行命令: {script_path} {mode} --auto")
 
             process = subprocess.Popen(
                 cmd,
