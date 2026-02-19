@@ -13,7 +13,9 @@ from pathlib import Path
 class GPUSwitcher(Gtk.Window):
     def __init__(self):
         super().__init__(title="GPU 直通控制面板")
-        self.set_default_size(480, 580)
+        # 设置最小大小和默认大小
+        self.set_size_request(480, 600)  # 最小大小
+        self.set_default_size(500, 700)  # 默认大小
         self.set_border_width(15)
         self.set_resizable(True)
         self.set_position(Gtk.WindowPosition.CENTER)
@@ -161,16 +163,21 @@ class GPUSwitcher(Gtk.Window):
         cleanup_box.set_margin_bottom(10)
         cleanup_box.set_margin_start(20)
         cleanup_box.set_margin_end(20)
+        cleanup_box.set_hexpand(True)
         cleanup_frame.add(cleanup_box)
 
         # 快速清理按钮
         quick_cleanup_btn = Gtk.Button.new_with_label("🧹 快速清理 GPU")
+        quick_cleanup_btn.set_hexpand(True)
+        quick_cleanup_btn.get_vexpand(False)
         quick_cleanup_btn.get_style_context().add_class("cleanup-button-quick")
         quick_cleanup_btn.connect("clicked", self.on_quick_cleanup)
         cleanup_box.pack_start(quick_cleanup_btn, True, True, 0)
 
         # 完整清理按钮
         full_cleanup_btn = Gtk.Button.new_with_label("⚡ 完整清理")
+        full_cleanup_btn.set_hexpand(True)
+        full_cleanup_btn.set_vexpand(False)
         full_cleanup_btn.get_style_context().add_class("cleanup-button-full")
         full_cleanup_btn.connect("clicked", self.on_full_cleanup)
         cleanup_box.pack_start(full_cleanup_btn, True, True, 0)
@@ -189,18 +196,21 @@ class GPUSwitcher(Gtk.Window):
         actions_box.set_margin_bottom(15)
         actions_box.set_margin_start(20)
         actions_box.set_margin_end(20)
+        actions_box.set_hexpand(True)
         actions_frame.add(actions_box)
 
         # 正常模式按钮
         self.normal_btn = Gtk.Button.new_with_label("🟢 正常模式\n(NVIDIA)")
-        self.normal_btn.set_size_request(160, 75)
+        self.normal_btn.set_hexpand(True)
+        self.normal_btn.set_vexpand(False)
         self.normal_btn.get_style_context().add_class("mode-button-normal")
         self.normal_btn.connect("clicked", self.on_switch_normal)
         actions_box.pack_start(self.normal_btn, True, True, 0)
 
         # 直通模式按钮
         self.pt_btn = Gtk.Button.new_with_label("🟠 直通模式\n(VFIO)")
-        self.pt_btn.set_size_request(160, 75)
+        self.pt_btn.set_hexpand(True)
+        self.pt_btn.set_vexpand(False)
         self.pt_btn.get_style_context().add_class("mode-button-passthrough")
         self.pt_btn.connect("clicked", self.on_switch_passthrough)
         actions_box.pack_start(self.pt_btn, True, True, 0)
@@ -236,10 +246,14 @@ class GPUSwitcher(Gtk.Window):
         # 日志输出区域
         log_frame = Gtk.Frame(label="操作日志")
         log_frame.get_style_context().add_class("log-card")
+        log_frame.set_vexpand(True)  # 允许垂直扩展
         vbox.pack_start(log_frame, True, True, 0)
 
         scrolled_window = Gtk.ScrolledWindow()
+        scrolled_window.set_vexpand(True)  # 允许垂直扩展
+        scrolled_window.set_hexpand(True)  # 允许水平扩展
         scrolled_window.set_min_content_height(150)
+        scrolled_window.set_min_content_width(440)
         scrolled_window.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         scrolled_window.get_style_context().add_class("log-scroll")
 
@@ -249,6 +263,8 @@ class GPUSwitcher(Gtk.Window):
         log_view.set_margin_bottom(8)
         log_view.set_margin_start(8)
         log_view.set_margin_end(8)
+        log_view.set_vexpand(True)
+        log_view.set_hexpand(True)
         log_view.get_style_context().add_class("log-view")
 
         scrolled_window.add(log_view)
