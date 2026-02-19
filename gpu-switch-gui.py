@@ -38,6 +38,9 @@ class GPUSwitcher(Gtk.Window):
             'audio': '10de:1aef'
         }
 
+        # 切换模式: 'reboot' (重启切换) 或 'hotplug' (热切换)
+        self.switch_mode = 'reboot'
+
         self.setup_ui()
         self.update_status()
 
@@ -98,6 +101,36 @@ class GPUSwitcher(Gtk.Window):
         separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
         vbox.pack_start(separator, False, False, 10)
 
+        # 切换模式选择
+        mode_frame = Gtk.Frame(label="切换方式")
+        mode_frame.get_style_context().add_class("mode-card")
+        vbox.pack_start(mode_frame, False, False, 0)
+
+        mode_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        mode_box.set_margin_top(10)
+        mode_box.set_margin_bottom(10)
+        mode_box.set_margin_start(20)
+        mode_box.set_margin_end(20)
+        mode_frame.add(mode_box)
+
+        self.reboot_toggle = Gtk.ToggleButton.new_with_label("🔄 重启切换 (安全)")
+        self.reboot_toggle.set_size_request(180, 40)
+        self.reboot_toggle.set_active(True)
+        self.reboot_toggle.get_style_context().add_class("toggle-button-reboot")
+        self.reboot_toggle.connect("toggled", self.on_toggle_switch_mode)
+        mode_box.pack_start(self.reboot_toggle, True, True, 0)
+
+        self.hotplug_toggle = Gtk.ToggleButton.new_with_label("⚡ 热切换 (快速)")
+        self.hotplug_toggle.set_size_request(180, 40)
+        self.hotplug_toggle.set_active(False)
+        self.hotplug_toggle.get_style_context().add_class("toggle-button-hotplug")
+        self.hotplug_toggle.connect("toggled", self.on_toggle_switch_mode)
+        mode_box.pack_start(self.hotplug_toggle, True, True, 0)
+
+        # 分隔线
+        separator2 = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+        vbox.pack_start(separator2, False, False, 10)
+
         # 操作按钮
         actions_frame = Gtk.Frame(label="切换模式")
         actions_frame.get_style_context().add_class("actions-card")
@@ -142,17 +175,15 @@ class GPUSwitcher(Gtk.Window):
         warning_label.get_style_context().add_class("warning-title")
         warning_box.pack_start(warning_label, False, False, 0)
 
-        warning_text = Gtk.Label(label="")
-        warning_text.set_markup(
-            "• <b>切换模式后系统将自动重启</b>\n"
-            "• 切换前请保存所有工作\n"
-            "• 切换需要管理员权限"
-        )
-        warning_text.set_halign(Gtk.Align.START)
-        warning_text.set_line_wrap(True)
-        warning_text.set_margin_start(5)
-        warning_text.get_style_context().add_class("warning-text")
-        warning_box.pack_start(warning_text, False, False, 0)
+        self.warning_text = Gtk.Label(label="")
+        self.warning_text.set_halign(Gtk.Align.START)
+        self.warning_text.set_line_wrap(True)
+        self.warning_text.set_margin_start(5)
+        self.warning_text.get_style_context().add_class("warning-text")
+        warning_box.pack_start(self.warning_text, False, False, 0)
+
+        # 初始化警告文本
+        self.update_warning_text()
 
         # 日志输出区域
         log_frame = Gtk.Frame(label="操作日志")
@@ -244,6 +275,43 @@ class GPUSwitcher(Gtk.Window):
 
         .button-active:disabled {
             opacity: 0.8;
+        }
+
+        /* 切换方式选择按钮 */
+        .mode-card {
+            border-radius: 8px;
+            border: 1px solid rgba(0,0,0,0.1);
+        }
+
+        .toggle-button-reboot {
+            border-radius: 6px;
+            padding: 8px 16px;
+            font-size: 12px;
+            font-weight: bold;
+            border: 2px solid #4CAF50;
+        }
+
+        .toggle-button-reboot:checked {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white;
+        }
+
+        .toggle-button-hotplug {
+            border-radius: 6px;
+            padding: 8px 16px;
+            font-size: 12px;
+            font-weight: bold;
+            border: 2px solid #FF9800;
+        }
+
+        .toggle-button-hotplug:checked {
+            background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);
+            color: white;
+        }
+
+        .toggle-button-reboot:not(:checked):hover,
+        .toggle-button-hotplug:not(:checked):hover {
+            background-color: rgba(0,0,0,0.05);
         }
 
         /* 非激活状态按钮 */
@@ -479,9 +547,50 @@ class GPUSwitcher(Gtk.Window):
         self.update_status()
         self.log("状态已刷新")
 
+    def on_toggle_switch_mode(self, button):
+        """切换热切换/重启切换模式"""
+        if button == self.reboot_toggle and button.get_active():
+            self.hotplug_toggle.set_active(False)
+            self.switch_mode = 'reboot'
+            self.log("🔄 已切换到重启切换模式 (安全)")
+            self.update_warning_text()
+        elif button == self.hotplug_toggle and button.get_active():
+            self.reboot_toggle.set_active(False)
+            self.switch_mode = 'hotplug'
+            self.log("⚡ 已切换到热切换模式 (快速)")
+            self.update_warning_text()
+        else:
+            # 防止两个都不选中
+            if self.switch_mode == 'reboot':
+                self.reboot_toggle.set_active(True)
+            else:
+                self.hotplug_toggle.set_active(True)
+
+    def update_warning_text(self):
+        """根据切换模式更新警告文本"""
+        if self.switch_mode == 'reboot':
+            self.warning_text.set_markup(
+                "• <b>重启切换: 切换后系统将自动重启</b>\n"
+                "• 切换前请保存所有工作\n"
+                "• 更安全，但需要重启时间"
+            )
+        else:
+            self.warning_text.set_markup(
+                "• <b>热切换: 无需重启，快速切换</b>\n"
+                "• 需要预先启用 IOMMU\n"
+                "• 可能需要关闭显示服务和应用程序"
+            )
+
     def execute_switch(self, mode):
         """执行切换操作"""
-        self.log(f"开始切换到{mode}模式...")
+        if self.switch_mode == 'reboot':
+            self.execute_reboot_switch(mode)
+        else:
+            self.execute_hotplug_switch(mode)
+
+    def execute_reboot_switch(self, mode):
+        """执行重启切换操作"""
+        self.log(f"🔄 开始切换到{mode}模式 (重启方式)...")
 
         try:
             script_path = str(self.switch_script)
@@ -539,6 +648,79 @@ class GPUSwitcher(Gtk.Window):
         finally:
             self.operation_in_progress = False
 
+    def execute_hotplug_switch(self, mode):
+        """执行热切换操作"""
+        self.log(f"⚡ 开始切换到{mode}模式 (热切换方式)...")
+
+        # 检查热切换脚本是否存在
+        hotplug_script = self.script_dir / "gpu-hotplug-safe.sh"
+        fallback_script = self.script_dir / "gpu-switch-hotplug"
+
+        if hotplug_script.exists():
+            script_path = str(hotplug_script)
+            self.log(f"使用安全热切换脚本")
+        elif fallback_script.exists():
+            script_path = str(fallback_script)
+            self.log(f"使用标准热切换脚本")
+        else:
+            self.log(f"✗ 未找到热切换脚本")
+            self.log(f"  请确保以下文件存在:")
+            self.log(f"  - gpu-hotplug-safe.sh")
+            self.log(f"  - 或 gpu-switch-hotplug")
+            GLib.idle_add(lambda: (self.restore_buttons(), False))
+            return
+
+        try:
+            if mode == "normal":
+                cmd = f"pkexec {script_path} normal"
+            else:
+                cmd = f"pkexec {script_path} passthrough"
+
+            self.log(f"执行命令: {script_path} {mode}")
+
+            process = subprocess.Popen(
+                cmd,
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+
+            # 实时输出日志
+            for line in process.stdout:
+                if line.strip():
+                    self.log(line.strip())
+
+            stdout, stderr = process.communicate(timeout=120)
+
+            if process.returncode == 0:
+                self.log("✓ 热切换成功")
+                if stdout:
+                    for line in stdout.split('\n'):
+                        if line.strip():
+                            self.log(line)
+                # 更新状态
+                GLib.timeout_add(1000, self.update_status)
+            else:
+                self.log("✗ 热切换失败")
+                if stderr:
+                    for line in stderr.split('\n'):
+                        if line.strip():
+                            self.log(line)
+                GLib.idle_add(lambda: (self.restore_buttons(), False))
+
+            if mode == "normal":
+                self.log("💡 如需启动显示服务，运行: sudo systemctl start display-manager")
+
+        except subprocess.TimeoutExpired:
+            self.log("✗ 操作超时")
+            GLib.idle_add(lambda: (self.restore_buttons(), False))
+        except Exception as e:
+            self.log(f"✗ 执行错误: {e}")
+            GLib.idle_add(lambda: (self.restore_buttons(), False))
+        finally:
+            self.operation_in_progress = False
+
     def restore_buttons(self):
         """恢复按钮状态"""
         self.normal_btn.set_sensitive(True)
@@ -556,12 +738,23 @@ class GPUSwitcher(Gtk.Window):
             buttons=Gtk.ButtonsType.OK_CANCEL,
             text=f"切换到{mode_name}"
         )
-        dialog.format_secondary_text(
-            f"这将从{'直通' if mode == 'normal' else '正常'}模式切换到{mode_name}。\n\n"
-            "⚠️ <b>系统将自动重启！</b>\n"
-            "请保存所有未保存的工作。\n\n"
-            "继续?"
-        )
+
+        if self.switch_mode == 'reboot':
+            dialog.format_secondary_text(
+                f"这将从{'直通' if mode == 'normal' else '正常'}模式切换到{mode_name}。\n\n"
+                "⚠️ <b>系统将自动重启！</b>\n"
+                "请保存所有未保存的工作。\n\n"
+                "继续?"
+            )
+        else:
+            dialog.format_secondary_text(
+                f"这将从{'直通' if mode == 'normal' else '正常'}模式切换到{mode_name}。\n\n"
+                "⚡ <b>热切换模式 - 无需重启</b>\n"
+                "• 确保没有应用程序正在使用 GPU\n"
+                "• 可能需要停止显示服务\n\n"
+                "继续?"
+            )
+
         response = dialog.run()
         dialog.destroy()
         return response == Gtk.ResponseType.OK
