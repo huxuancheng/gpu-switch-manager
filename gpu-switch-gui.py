@@ -41,8 +41,14 @@ class GPUSwitcher(Gtk.Window):
         # 切换模式: 'reboot' (重启切换) 或 'hotplug' (热切换)
         self.switch_mode = 'reboot'
 
+        # GPU 占用状态
+        self.gpu_usage_detected = False
+
         self.setup_ui()
         self.update_status()
+
+        # 启动后自动检测 GPU 占用（延迟 0.5 秒确保 UI 加载完成）
+        GLib.timeout_add(500, self.auto_check_gpu_usage)
 
     def setup_ui(self):
         # 应用 CSS 样式
@@ -131,22 +137,15 @@ class GPUSwitcher(Gtk.Window):
         separator2 = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
         vbox.pack_start(separator2, False, False, 10)
 
-        # GPU 监控按钮
-        monitor_frame = Gtk.Frame(label="GPU 监控")
-        monitor_frame.get_style_context().add_class("monitor-card")
-        vbox.pack_start(monitor_frame, False, False, 0)
-
-        monitor_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        monitor_box.set_margin_top(10)
-        monitor_box.set_margin_bottom(10)
-        monitor_box.set_margin_start(20)
-        monitor_box.set_margin_end(20)
-        monitor_frame.add(monitor_box)
-
-        monitor_btn = Gtk.Button.new_with_label("📊 检查 GPU 占用")
-        monitor_btn.get_style_context().add_class("monitor-button")
-        monitor_btn.connect("clicked", self.on_monitor_gpu)
-        monitor_box.pack_start(monitor_btn, True, True, 0)
+        # GPU 占用状态提示（启动时自动显示）
+        self.gpu_usage_label = Gtk.Label(label="")
+        self.gpu_usage_label.set_halign(Gtk.Align.CENTER)
+        self.gpu_usage_label.set_margin_start(10)
+        self.gpu_usage_label.set_margin_end(10)
+        self.gpu_usage_label.set_margin_top(5)
+        self.gpu_usage_label.set_margin_bottom(5)
+        self.gpu_usage_label.set_line_wrap(True)
+        vbox.pack_start(self.gpu_usage_label, False, False, 0)
 
         # 分隔线
         separator3 = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
@@ -229,6 +228,80 @@ class GPUSwitcher(Gtk.Window):
 
         # 窗口显示后再添加日志，避免初始化错误
         GLib.idle_add(lambda: (self.log("🚀 GPU 直通控制面板已启动"), False))
+
+    def auto_check_gpu_usage(self):
+        """启动时自动检测 GPU 占用"""
+        self.log("📊 自动检测 GPU 占用情况...")
+
+        monitor_script = self.script_dir / "gpu-monitor.sh"
+        if not monitor_script.exists():
+            self.log("⚠️ GPU 监控脚本不存在，跳过检测")
+            return False
+
+        # 在后台线程中运行检测
+        thread = threading.Thread(target=self._run_gpu_check_thread, args=(monitor_script,))
+        thread.daemon = True
+        thread.start()
+
+        return False  # 只运行一次
+
+    def _run_gpu_check_thread(self, script_path):
+        """在后台线程中运行 GPU 检测"""
+        try:
+            success, output, error = self.run_command(str(script_path))
+
+            GLib.idle_add(lambda: self._process_gpu_check_result(success, output, error))
+        except Exception as e:
+            GLib.idle_add(lambda: self.log(f"GPU 检测出错: {e}"))
+
+    def _process_gpu_check_result(self, success, output, error):
+        """处理 GPU 检测结果"""
+        if not success:
+            self.log("⚠️ GPU 监控不可用（nvidia-smi 可能未安装）")
+            return
+
+        # 解析输出，检测是否有进程占用
+        has_compute = False
+        has_gui = False
+        has_browser = False
+        has_game = False
+
+        lines = output.split('\n')
+        for line in lines:
+            if 'CUDA' in line or '计算进程' in line:
+                has_compute = True
+            elif 'Xorg' in line or 'gnome-shell' in line or 'kwin' in line:
+                has_gui = True
+            elif 'chrome' in line.lower() or 'firefox' in line.lower():
+                has_browser = True
+            elif 'steam' in line.lower() or 'game' in line.lower():
+                has_game = True
+
+        # 更新状态
+        self.gpu_usage_detected = has_compute or has_game
+
+        # 更新提示标签
+        if self.gpu_usage_detected:
+            self.gpu_usage_label.set_markup(
+                "<span foreground='#FF5722'>⚠️ 检测到 GPU 被占用！热切换前请关闭相关应用</span>"
+            )
+            self.log("⚠️ 检测到 GPU 占用")
+        elif has_gui or has_browser:
+            self.gpu_usage_label.set_markup(
+                "<span foreground='#FF9800'>ℹ️ 检测到可能使用 GPU 的进程（显示服务/浏览器）</span>"
+            )
+            self.log("ℹ️ 检测到可能使用 GPU 的进程")
+        else:
+            self.gpu_usage_label.set_markup(
+                "<span foreground='#4CAF50'>✓ GPU 空闲，可以安全切换</span>"
+            )
+            self.log("✓ GPU 空闲，可以安全切换")
+
+        # 在日志中显示详细结果
+        self.log("=== GPU 监控结果 ===")
+        for line in lines[:30]:  # 只显示前 30 行
+            if line.strip():
+                self.log(line.strip())
 
     def apply_css(self):
         """应用自定义 CSS 样式"""
@@ -333,27 +406,6 @@ class GPUSwitcher(Gtk.Window):
         .toggle-button-reboot:not(:checked):hover,
         .toggle-button-hotplug:not(:checked):hover {
             background-color: rgba(0,0,0,0.05);
-        }
-
-        /* GPU 监控卡片 */
-        .monitor-card {
-            border-radius: 8px;
-            border: 1px solid rgba(0,0,0,0.1);
-        }
-
-        .monitor-button {
-            border-radius: 6px;
-            padding: 10px 20px;
-            font-size: 13px;
-            font-weight: bold;
-            background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
-            color: white;
-            border: none;
-        }
-
-        .monitor-button:hover {
-            background: linear-gradient(135deg, #42A5F5 0%, #1E88E5 100%);
-            box-shadow: 0 2px 8px rgba(33, 150, 243, 0.4);
         }
 
         /* 非激活状态按钮 */
@@ -588,28 +640,6 @@ class GPUSwitcher(Gtk.Window):
         self.log("正在刷新状态...")
         self.update_status()
         self.log("状态已刷新")
-
-    def run_gpu_monitor(self):
-        """运行 GPU 监控"""
-        self.log("📊 正在检查 GPU 占用情况...")
-
-        monitor_script = self.script_dir / "gpu-monitor.sh"
-        if monitor_script.exists():
-            success, output, error = self.run_command(str(monitor_script))
-
-            if success:
-                self.log("=== GPU 监控结果 ===")
-                for line in output.split('\n'):
-                    if line.strip():
-                        self.log(line.strip())
-            else:
-                self.log("⚠️ GPU 监控不可用（nvidia-smi 可能未安装）")
-        else:
-            self.log("⚠️ GPU 监控脚本不存在")
-
-    def on_monitor_gpu(self, button):
-        """GPU 监控按钮点击事件"""
-        self.run_gpu_monitor()
 
     def on_toggle_switch_mode(self, button):
         """切换热切换/重启切换模式"""
