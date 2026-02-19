@@ -52,31 +52,84 @@ backup_state() {
     } > "$BACKUP_DIR/state_$(date +%Y%m%d_%H%M%S).txt"
 }
 
-# 检查 GPU 占用
+# 检查 GPU 占用（增强版）
 check_gpu_usage() {
     log_info "检查 GPU 使用情况..."
 
+    local found_usage=false
+
+    # 1. 检查计算进程
     if command -v nvidia-smi >/dev/null 2>&1; then
-        processes=$(nvidia-smi --query-compute-apps=pid --format=csv,noheader 2>/dev/null)
+        processes=$(nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader 2>/dev/null)
         if [ -n "$processes" ]; then
-            log_warning "以下进程正在使用 GPU:"
-            nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader 2>/dev/null | tee -a "$BACKUP_DIR/hotplug.log"
-            return 1
+            log_warning "检测到计算进程正在使用 GPU:"
+            echo "$processes" | tee -a "$BACKUP_DIR/hotplug.log" | while IFS=, read -r pid name mem; do
+                log_warning "  - PID: $(echo $pid | tr -d ' '), 进程: $(echo $name | tr -d ' '), 显存: $(echo $mem | tr -d ' ') MB"
+            done
+            found_usage=true
         fi
     fi
 
-    # 检查 /dev/nvidia 设备占用
+    # 2. 检查 /dev/nvidia 设备占用
     if [ -e /dev/nvidia0 ]; then
-        users=$(sudo lsof /dev/nvidia* 2>/dev/null | grep -v COMMAND || true)
-        if [ -n "$users" ]; then
-            log_warning "检测到 /dev/nvidia 设备被占用:"
-            echo "$users" | tee -a "$BACKUP_DIR/hotplug.log"
-            return 1
+        device_users=$(sudo lsof /dev/nvidia* 2>/dev/null | grep -v COMMAND || true)
+        if [ -n "$device_users" ]; then
+            if [ "$found_usage" = false ]; then
+                log_warning "检测到设备文件被占用:"
+            fi
+            echo "$device_users" | tee -a "$BACKUP_DIR/hotplug.log" | while read -r command pid user fd type device size node name; do
+                if [ "$command" != "COMMAND" ]; then
+                    log_warning "  - $command (PID: $pid, 用户: $user) - $name"
+                fi
+            done
+            found_usage=true
         fi
     fi
 
-    log_success "无进程占用 GPU"
-    return 0
+    # 3. 检查常见图形进程
+    local graphical_procs=("Xorg" "gnome-shell" "kwin_x11" "plasmashell")
+    for proc in "${graphical_procs[@]}"; do
+        if pgrep -x "$proc" >/dev/null 2>&1; then
+            pids=$(pgrep -x "$proc" | head -3)
+            if [ "$found_usage" = false ]; then
+                log_warning "检测到图形进程:"
+            fi
+            log_warning "  - $proc (PID: $pids)"
+            found_usage=true
+        fi
+    done
+
+    # 4. 检查浏览器进程
+    local browsers=("chrome" "chromium" "firefox")
+    for browser in "${browsers[@]}"; do
+        if pgrep -f "$browser" >/dev/null 2>&1; then
+            count=$(pgrep -f "$browser" | wc -l)
+            if [ "$found_usage" = false ]; then
+                log_warning "检测到可能使用 GPU 的进程:"
+            fi
+            log_warning "  - $browser ($count 个进程)"
+            found_usage=true
+        fi
+    done
+
+    # 5. 检查游戏进程
+    local games=("steam" "Lutris" "heroic" "minecraft")
+    for game in "${games[@]}"; do
+        if pgrep -if "$game" >/dev/null 2>&1; then
+            if [ "$found_usage" = false ]; then
+                log_warning "检测到游戏进程:"
+            fi
+            log_warning "  - $game (PID: $(pgrep -if "$game" | head -1))"
+            found_usage=true
+        fi
+    done
+
+    if [ "$found_usage" = false ]; then
+        log_success "未检测到 GPU 占用"
+        return 0
+    fi
+
+    return 1
 }
 
 # 强制停止 GPU 进程

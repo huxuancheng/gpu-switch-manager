@@ -131,6 +131,27 @@ class GPUSwitcher(Gtk.Window):
         separator2 = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
         vbox.pack_start(separator2, False, False, 10)
 
+        # GPU 监控按钮
+        monitor_frame = Gtk.Frame(label="GPU 监控")
+        monitor_frame.get_style_context().add_class("monitor-card")
+        vbox.pack_start(monitor_frame, False, False, 0)
+
+        monitor_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        monitor_box.set_margin_top(10)
+        monitor_box.set_margin_bottom(10)
+        monitor_box.set_margin_start(20)
+        monitor_box.set_margin_end(20)
+        monitor_frame.add(monitor_box)
+
+        monitor_btn = Gtk.Button.new_with_label("📊 检查 GPU 占用")
+        monitor_btn.get_style_context().add_class("monitor-button")
+        monitor_btn.connect("clicked", self.on_monitor_gpu)
+        monitor_box.pack_start(monitor_btn, True, True, 0)
+
+        # 分隔线
+        separator3 = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+        vbox.pack_start(separator3, False, False, 10)
+
         # 操作按钮
         actions_frame = Gtk.Frame(label="切换模式")
         actions_frame.get_style_context().add_class("actions-card")
@@ -312,6 +333,27 @@ class GPUSwitcher(Gtk.Window):
         .toggle-button-reboot:not(:checked):hover,
         .toggle-button-hotplug:not(:checked):hover {
             background-color: rgba(0,0,0,0.05);
+        }
+
+        /* GPU 监控卡片 */
+        .monitor-card {
+            border-radius: 8px;
+            border: 1px solid rgba(0,0,0,0.1);
+        }
+
+        .monitor-button {
+            border-radius: 6px;
+            padding: 10px 20px;
+            font-size: 13px;
+            font-weight: bold;
+            background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+            color: white;
+            border: none;
+        }
+
+        .monitor-button:hover {
+            background: linear-gradient(135deg, #42A5F5 0%, #1E88E5 100%);
+            box-shadow: 0 2px 8px rgba(33, 150, 243, 0.4);
         }
 
         /* 非激活状态按钮 */
@@ -547,6 +589,28 @@ class GPUSwitcher(Gtk.Window):
         self.update_status()
         self.log("状态已刷新")
 
+    def run_gpu_monitor(self):
+        """运行 GPU 监控"""
+        self.log("📊 正在检查 GPU 占用情况...")
+
+        monitor_script = self.script_dir / "gpu-monitor.sh"
+        if monitor_script.exists():
+            success, output, error = self.run_command(str(monitor_script))
+
+            if success:
+                self.log("=== GPU 监控结果 ===")
+                for line in output.split('\n'):
+                    if line.strip():
+                        self.log(line.strip())
+            else:
+                self.log("⚠️ GPU 监控不可用（nvidia-smi 可能未安装）")
+        else:
+            self.log("⚠️ GPU 监控脚本不存在")
+
+    def on_monitor_gpu(self, button):
+        """GPU 监控按钮点击事件"""
+        self.run_gpu_monitor()
+
     def on_toggle_switch_mode(self, button):
         """切换热切换/重启切换模式"""
         if button == self.reboot_toggle and button.get_active():
@@ -651,6 +715,9 @@ class GPUSwitcher(Gtk.Window):
     def execute_hotplug_switch(self, mode):
         """执行热切换操作"""
         self.log(f"⚡ 开始切换到{mode}模式 (热切换方式)...")
+
+        # 首先运行 GPU 监控
+        self.run_gpu_monitor()
 
         # 检查热切换脚本是否存在
         hotplug_script = self.script_dir / "gpu-hotplug-safe.sh"
