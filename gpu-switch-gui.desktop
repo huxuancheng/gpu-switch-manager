@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=GPU 直通控制
+Name[en]=GPU Passthrough Switcher
+Comment=切换 GPU 直通模式和正常模式
+Comment[en]=Switch between GPU passthrough and normal mode
+Exec=/usr/bin/python3 /home/huxuancheng/Desktop/gpu-switch-gui.py
+Icon=video-display
+Terminal=false
+Categories=System;Settings;
+Keywords=GPU;Passthrough;VFIO;NVIDIA;
+StartupNotify=true
